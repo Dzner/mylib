@@ -39,6 +39,7 @@ screenGui.ResetOnSpawn = false
 local window = new("Frame", {
     Parent = screenGui,
     Name = "Window",
+    Size = UDim2.fromOffset(820 * settings.scale, 480 * settings.scale),
     Position = UDim2.new(0.5, 0, 0.5, 0),
     AnchorPoint = Vector2.new(0.5,0.5),
     BackgroundTransparency = 0,
