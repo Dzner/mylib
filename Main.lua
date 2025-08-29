@@ -513,7 +513,7 @@ mk("TextLabel",{
 local minimized = false
 btnMin.MouseButton1Click:Connect(function()
     minimized = not minimized
-    TweenService:Create(content, TweenInfo.new(0.25), {Size = minimized and UDim2.new(1,-12,0,0) or UDim2.new(1,-12,1,-54)}):Play()
+    content.Visible = not minimized
 end)
 
 btnTheme.MouseButton1Click:Connect(function()
