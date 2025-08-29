@@ -1,569 +1,386 @@
---// ScriptHub Pro GUI - LocalScript by ChatGPT (Arabic)
---// المكان المناسب: StarterPlayerScripts أو StarterGui
---// يعتمد على ModuleScripts داخل ReplicatedStorage.ScriptHubModules
---// جميع الإعدادات هنا تحفظ "لجلسة اللعب" فقط (وليس عبر الداتا ستور)
+-- Professional GUI Builder (LocalScript)
+-- Put this LocalScript in StarterPlayerScripts or StarterGui
 
---== الخدمات ==--
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local HttpService = game:GetService("HttpService")
 
-local LocalPlayer = Players.LocalPlayer
+local player = Players.LocalPlayer
+local mouse = player:GetMouse()
 
---== ثابت المجلدات ==--
-local MODULES_FOLDER_NAME = "ScriptHubModules"
-local SNIPPETS_FOLDER_NAME = "ScriptHubSnippets"
-
---== ثيمات ==--
-local Themes = {
-    Dark = {
-        Bg = Color3.fromRGB(22,22,24),
-        Panel = Color3.fromRGB(33,34,38),
-        Accent = Color3.fromRGB(0,162,255),
-        Text = Color3.fromRGB(235,235,240),
-        Subtle = Color3.fromRGB(140,140,150)
-    },
-    Light = {
-        Bg = Color3.fromRGB(245,246,250),
-        Panel = Color3.fromRGB(230,232,238),
-        Accent = Color3.fromRGB(0,120,215),
-        Text = Color3.fromRGB(25,27,33),
-        Subtle = Color3.fromRGB(95,98,110)
-    }
+-- Settings (in-memory). To persist across sessions use a server DataStore.
+local settings = {
+    theme = "Dark", -- "Dark" or "Light"
+    scale = 1,
+    visible = true,
+    bind = Enum.KeyCode.RightShift,
+    accent = Color3.fromRGB(0, 162, 255)
 }
 
---== تفضيلات الجلسة ==--
-local SessionState = {
-    Theme = "Dark",
-    Pos = UDim2.new(0.2,0,0.2,0),
-    Size = UDim2.new(0, 560, 0, 360),
-    Visible = true,
-    LastTab = "Modules",
-    EnabledModules = {} -- [moduleId] = true/false
-}
-
--- محاولة استرجاع من قيمة مخزّنة في PlayerGui (لجلسة واحدة)
-local function tryLoadSession()
-    local pgui = LocalPlayer:WaitForChild("PlayerGui", 5)
-    if not pgui then return end
-    local holder = pgui:FindFirstChild("ScriptHubSession")
-    if holder and holder:IsA("StringValue") then
-        local ok, data = pcall(function() return HttpService:JSONDecode(holder.Value) end)
-        if ok and typeof(data) == "table" then
-            for k,v in pairs(data) do SessionState[k] = v end
+-- Helper: create UI instances quickly
+local function new(class, props)
+    local obj = Instance.new(class)
+    for k,v in pairs(props or {}) do
+        if k == "Parent" then
+            obj.Parent = v
+        else
+            pcall(function() obj[k] = v end)
         end
     end
-end
-
-local function saveSession()
-    local pgui = LocalPlayer:FindFirstChild("PlayerGui")
-    if not pgui then return end
-    local holder = pgui:FindFirstChild("ScriptHubSession")
-    if not holder then
-        holder = Instance.new("StringValue")
-        holder.Name = "ScriptHubSession"
-        holder.Parent = pgui
-    end
-    holder.Value = HttpService:JSONEncode(SessionState)
-end
-
-tryLoadSession()
-
---== أدوات واجهة ==--
-local function mk(instance, props, children)
-    local obj = Instance.new(instance)
-    for k,v in pairs(props or {}) do obj[k] = v end
-    for _,c in ipairs(children or {}) do c.Parent = obj end
     return obj
 end
 
-local function corner(parent, radius)
-    mk("UICorner",{CornerRadius = UDim.new(0, radius or 8)},{}).Parent = parent
+-- Root ScreenGui
+local screenGui = new("ScreenGui", {Parent = player:WaitForChild("PlayerGui"), Name = "ProGUI", ZIndexBehavior = Enum.ZIndexBehavior.Sibling})
+screenGui.ResetOnSpawn = false
+
+-- Main window
+local window = new("Frame", {
+    Parent = screenGui,
+    Name = "Window",
+    Size = UDim2.fromOffset(820 * settings.scale, 480 * settings.scale),
+    Position = UDim2.new(0.5, -410 * settings.scale, 0.5, -240 * settings.scale),
+    AnchorPoint = Vector2.new(0.5,0.5),
+    BackgroundTransparency = 0,
+    Active = true
+})
+local corner = new("UICorner", {Parent = window, CornerRadius = UDim.new(0, 10)})
+local stroke = new("UIStroke", {Parent = window, Thickness = 1})
+
+-- Shadow (simple)
+local shadow = new("ImageLabel", {
+    Parent = window,
+    Size = UDim2.new(1,20,1,20),
+    Position = UDim2.new(0,-10,0,-10),
+    BackgroundTransparency = 1,
+    Image = "rbxassetid://3526301355", -- subtle shadow image
+    ScaleType = Enum.ScaleType.Slice,
+    SliceCenter = Rect.new(20,20,280,280),
+    ZIndex = 0,
+})
+shadow.ImageColor3 = Color3.fromRGB(0,0,0)
+shadow.ImageTransparency = 0.92
+
+-- Header
+local header = new("Frame", {Parent = window, Name = "Header", Size = UDim2.new(1,0,0,48), BackgroundTransparency = 0})
+new("UICorner", {Parent = header, CornerRadius = UDim.new(0, 10)})
+local headerTitle = new("TextLabel", {
+    Parent = header,
+    Text = "Pro GUI",
+    Font = Enum.Font.GothamBold,
+    TextSize = 20,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    Position = UDim2.new(0,16,0,8),
+    Size = UDim2.new(0.6,0,1, -8),
+    BackgroundTransparency = 1
+})
+local btnMin = new("TextButton", {
+    Parent = header,
+    Text = "—",
+    Font = Enum.Font.GothamBold,
+    TextSize = 22,
+    Size = UDim2.new(0,40,0,28),
+    Position = UDim2.new(1,-96,0,10),
+    BackgroundTransparency = 0,
+})
+local btnClose = new("TextButton", {
+    Parent = header,
+    Text = "✕",
+    Font = Enum.Font.GothamBold,
+    TextSize = 18,
+    Size = UDim2.new(0,40,0,28),
+    Position = UDim2.new(1,-48,0,10),
+    BackgroundTransparency = 0,
+})
+
+-- Left sidebar (tabs)
+local sidebar = new("Frame", {Parent = window, Name = "Sidebar", Size = UDim2.new(0,160,1,-48), Position = UDim2.new(0,0,0,48)})
+new("UICorner", {Parent = sidebar, CornerRadius = UDim.new(0, 8)})
+local tabList = new("UIListLayout", {Parent = sidebar, Padding = UDim.new(0,6), FillDirection = Enum.FillDirection.Vertical, SortOrder = Enum.SortOrder.LayoutOrder})
+tabList.Padding = UDim.new(0,10)
+
+-- Content area
+local content = new("Frame", {Parent = window, Name = "Content", Size = UDim2.new(1, -160, 1, -48), Position = UDim2.new(0,160,0,48), BackgroundTransparency = 0})
+new("UICorner", {Parent = content, CornerRadius = UDim.new(0, 8)})
+
+-- Tab creation helper
+local tabs = {}
+local function createTab(name)
+    local btn = new("TextButton", {
+        Parent = sidebar,
+        Text = name,
+        Size = UDim2.new(1,-16,0,44),
+        Font = Enum.Font.Gotham,
+        TextSize = 16,
+        BackgroundTransparency = 0
+    })
+    local page = new("Frame", {Parent = content, Name = name.."Page", Size = UDim2.new(1,0,1,0), Visible = false})
+    new("UICorner", {Parent = page, CornerRadius = UDim.new(0,6)})
+    tabs[name] = page
+    return btn, page
 end
 
-local function stroke(parent, t)
-    mk("UIStroke",{
-        Thickness = t or 1,
-        Transparency = 0.5,
-        Color = Color3.fromRGB(0,0,0),
-        ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    },{}).Parent = parent
-end
+-- Make some example tabs
+local btnHome, pageHome = createTab("Home")
+local btnSettings, pageSettings = createTab("Settings")
+local btnTools, pageTools = createTab("Tools")
 
-local function padding(parent, p)
-    mk("UIPadding",{
-        PaddingTop = UDim.new(0,p), PaddingBottom = UDim.new(0,p),
-        PaddingLeft = UDim.new(0,p), PaddingRight = UDim.new(0,p)
-    },{}).Parent = parent
-end
-
---== إشعارات ==--
-local Notifications
-do
-    local queue = {}
-    local holder
-    local function ensure(parent)
-        if holder and holder.Parent then return end
-        holder = mk("Frame",{
-            Name="NotifyHolder", BackgroundTransparency = 1,
-            AnchorPoint = Vector2.new(1,1),
-            Size = UDim2.new(0, 320, 1, -20),
-            Position = UDim2.new(1,-10,1,-10)
-        },{})
-        holder.Parent = parent
+-- Activate default tab
+local function activateTab(name)
+    for k,v in pairs(tabs) do
+        v.Visible = (k == name)
     end
-    local function push(parent, text, theme)
-        ensure(parent)
-        local f = mk("Frame",{
-            BackgroundColor3 = theme.Panel, Size = UDim2.new(1,0,0,0),
-            AutomaticSize = Enum.AutomaticSize.Y, ClipsDescendants = true
-        },{
-            mk("TextLabel",{
-                BackgroundTransparency = 1, TextWrapped = true,
-                RichText = true, Font = Enum.Font.GothamMedium, TextSize = 14,
-                TextColor3 = theme.Text, TextXAlignment = Enum.TextXAlignment.Left,
-                Size = UDim2.new(1,-20,1,0), Position = UDim2.new(0,10,0,8),
-                Text = text
-            },{})
-        })
-        corner(f,8); stroke(f,1)
-        f.Parent = holder
-        f.Position = UDim2.new(1,10,1,0)
-        TweenService:Create(f, TweenInfo.new(0.25, Enum.EasingStyle.Quint), {Position = UDim2.new(1,0,1,0)}):Play()
-        task.delay(3, function()
-            if f and f.Parent then
-                TweenService:Create(f, TweenInfo.new(0.25), {Position = UDim2.new(1,10,1,0)}):Play()
-                task.wait(0.26); f:Destroy()
-            end
+    -- visually mark sidebar buttons
+    for _,child in ipairs(sidebar:GetChildren()) do
+        if child:IsA("TextButton") then
+            child.BackgroundTransparency = 0.9
+        end
+    end
+end
+
+-- wire buttons
+btnHome.MouseButton1Click:Connect(function() activateTab("Home") end)
+btnSettings.MouseButton1Click:Connect(function() activateTab("Settings") end)
+btnTools.MouseButton1Click:Connect(function() activateTab("Tools") end)
+activateTab("Home")
+
+-- Build Home page contents
+do
+    local label = new("TextLabel", {Parent = pageHome, Text = "Welcome to Pro GUI", Font = Enum.Font.GothamBold, TextSize = 24, Size = UDim2.new(1, -24, 0, 40), Position = UDim2.new(0,12,0,12), BackgroundTransparency = 1})
+    local subtitle = new("TextLabel", {Parent = pageHome, Text = "Professional interface with tabs, sliders, dropdowns and notifications.", Font = Enum.Font.Gotham, TextSize = 14, Position = UDim2.new(0,12,0,50), Size = UDim2.new(1,-24,0,36), BackgroundTransparency = 1})
+end
+
+-- Settings page: theme toggle and scale slider and accent
+do
+    local themeLabel = new("TextLabel", {Parent = pageSettings, Text = "Theme:", Font = Enum.Font.GothamBold, TextSize = 16, Position = UDim2.new(0,12,0,12), BackgroundTransparency = 1})
+    local themeBtn = new("TextButton", {Parent = pageSettings, Text = settings.theme, Position = UDim2.new(0,90,0,12), Size = UDim2.new(0,120,0,28), Font = Enum.Font.Gotham, TextSize = 14})
+    themeBtn.MouseButton1Click:Connect(function()
+        settings.theme = (settings.theme == "Dark") and "Light" or "Dark"
+        themeBtn.Text = settings.theme
+        applyTheme()
+        showNotification("Theme switched to "..settings.theme)
+    end)
+
+    local scaleLabel = new("TextLabel", {Parent = pageSettings, Text = "Scale:", Font = Enum.Font.GothamBold, TextSize = 16, Position = UDim2.new(0,12,0,56), BackgroundTransparency = 1})
+    local scaleSliderBg = new("Frame", {Parent = pageSettings, Position = UDim2.new(0,90,0,56), Size = UDim2.new(0,160,0,18), BackgroundTransparency = 0.6})
+    new("UICorner", {Parent = scaleSliderBg, CornerRadius = UDim.new(0,8)})
+    local scaleHandle = new("Frame", {Parent = scaleSliderBg, Size = UDim2.new(0.5,0,1,0)})
+    new("UICorner", {Parent = scaleHandle, CornerRadius = UDim.new(0,8)})
+
+    local draggingScale = false
+    scaleHandle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then draggingScale = true end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then draggingScale = false end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if draggingScale and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local rel = math.clamp((mouse.X - scaleSliderBg.AbsolutePosition.X) / scaleSliderBg.AbsoluteSize.X, 0, 1)
+            scaleHandle.Size = UDim2.new(rel,0,1,0)
+            settings.scale = 0.7 + rel * 0.8 -- scale between 0.7 and 1.5
+            applyScale()
+        end
+    end)
+
+    -- Accent color picker (very simple: few buttons)
+    local accentLabel = new("TextLabel", {Parent = pageSettings, Text = "Accent:", Font = Enum.Font.GothamBold, TextSize = 16, Position = UDim2.new(0,12,0,96), BackgroundTransparency = 1})
+    local choices = {
+        Color3.fromRGB(0,162,255),
+        Color3.fromRGB(255,99,71),
+        Color3.fromRGB(102,204,0),
+        Color3.fromRGB(255,200,0)
+    }
+    for i,col in ipairs(choices) do
+        local b = new("TextButton", {Parent = pageSettings, Size = UDim2.new(0,28,0,28), Position = UDim2.new(0,90 + (i-1)*36,0,92), Text = "", BackgroundColor3 = col})
+        new("UICorner", {Parent = b, CornerRadius = UDim.new(0,6)})
+        b.MouseButton1Click:Connect(function()
+            settings.accent = col
+            applyTheme()
+            showNotification("Accent color changed")
         end)
     end
-    Notifications = {Show = push}
 end
 
---== الجذر ==--
-local gui = mk("ScreenGui",{Name = "ScriptHubPro", ResetOnSpawn = false, IgnoreGuiInset = true},{})
-gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+-- Tools page: dropdown & search example
+do
+    local ddLabel = new("TextLabel", {Parent = pageTools, Text = "Example Dropdown:", Font = Enum.Font.GothamBold, TextSize = 16, Position = UDim2.new(0,12,0,12), BackgroundTransparency = 1})
+    local dropdown = new("TextButton", {Parent = pageTools, Text = "Select Option ▼", Size = UDim2.new(0,220,0,36), Position = UDim2.new(0,12,0,44), Font = Enum.Font.Gotham})
+    new("UICorner", {Parent = dropdown, CornerRadius = UDim.new(0,6)})
+    local ddList = new("Frame", {Parent = pageTools, Position = UDim2.new(0,12,0,84), Size = UDim2.new(0,220,0,0), ClipsDescendants = true, BackgroundTransparency = 1})
+    new("UICorner", {Parent = ddList, CornerRadius = UDim.new(0,6)})
+    local ddLayout = new("UIListLayout", {Parent = ddList})
 
---== نافذة رئيسية ==--
-local theme = Themes[SessionState.Theme] or Themes.Dark
-
-local root = mk("Frame",{
-    Name="Root",
-    BackgroundColor3 = theme.Bg,
-    Size = SessionState.Size,
-    Position = SessionState.Pos,
-    Active = true, Draggable = true -- سحب
-},{}); corner(root,10); stroke(root,1); root.Parent = gui
-
---== شريط علوي ==--
-local topbar = mk("Frame",{
-    BackgroundColor3 = theme.Panel,
-    Size = UDim2.new(1, -12, 0, 36),
-    Position = UDim2.new(0,6,0,6)
-},{}); corner(topbar,8); stroke(topbar,1); topbar.Parent = root
-padding(topbar,8)
-
-local title = mk("TextLabel",{
-    BackgroundTransparency = 1, Text = "ScriptHub Pro",
-    Font = Enum.Font.GothamBold, TextSize = 16, TextXAlignment = Enum.TextXAlignment.Left,
-    TextColor3 = theme.Text, Size = UDim2.new(1,-180,1,0)
-},{}); title.Parent = topbar
-
--- أزرار الشريط
-local btnArea = mk("Frame",{
-    BackgroundTransparency = 1, Size = UDim2.new(0,160,1,0), Position = UDim2.new(1,-160,0,0)
-},{}); btnArea.Parent = topbar
-
-local function makeBtn(txt, tip)
-    local b = mk("TextButton",{
-        BackgroundColor3 = theme.Accent, Text = txt, AutoButtonColor = true,
-        Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = Color3.fromRGB(255,255,255),
-        Size = UDim2.new(0,44,1,0)
-    },{}); corner(b,6)
-    b.MouseEnter:Connect(function() title.Text = "ScriptHub Pro — "..tip end)
-    b.MouseLeave:Connect(function() title.Text = "ScriptHub Pro" end)
-    return b
-end
-
-local btnMin = makeBtn("-", "تصغير/إظهار")
-btnMin.Position = UDim2.new(1,-150,0,0); btnMin.Parent = btnArea
-local btnTheme = makeBtn("☀", "تبديل الثيم")
-btnTheme.Position = UDim2.new(1,-100,0,0); btnTheme.Parent = btnArea
-local btnClose = makeBtn("×", "إخفاء اللوحة (RightCtrl لإظهار)")
-btnClose.Position = UDim2.new(1,-50,0,0); btnClose.Parent = btnArea
-
---== منطقة المحتوى ==--
-local content = mk("Frame",{
-    BackgroundColor3 = theme.Panel,
-    Size = UDim2.new(1, -12, 1, -54),
-    Position = UDim2.new(0,6,0,48),
-    ClipsDescendants = true
-},{}); corner(content,10); stroke(content,1); content.Parent = root
-
---== تبويبات ==--
-local tabsBar = mk("Frame",{
-    BackgroundTransparency = 1, Size = UDim2.new(1, -16, 0, 30),
-    Position = UDim2.new(0,8,0,6)
-},{}); tabsBar.Parent = content
-
-local pages = mk("Frame",{
-    BackgroundTransparency = 1, Size = UDim2.new(1,-16,1,-44),
-    Position = UDim2.new(0,8,0,38)
-},{}); pages.Parent = content
-
-local function makeTabButton(name)
-    local b = mk("TextButton",{
-        BackgroundColor3 = theme.Bg, Text = name,
-        Font = Enum.Font.Gotham, TextSize = 14, TextColor3 = theme.Text,
-        Size = UDim2.new(0,110,1,0)
-    },{}); corner(b,6); stroke(b,1)
-    return b
-end
-
-local TabButtons = {}
-local function addTab(name)
-    local btn = makeTabButton(name); btn.Parent = tabsBar
-    btn.Position = UDim2.new(#TabButtons * 0, (#TabButtons*116), 0, 0)
-    local page = mk("Frame",{BackgroundTransparency=1, Size=UDim2.new(1,0,1,0)},{})
-    page.Visible = false; page.Parent = pages
-    TabButtons[name] = {Button = btn, Page = page}
-end
-
-addTab("Modules")
-addTab("Runner")
-addTab("Console")
-addTab("Settings")
-addTab("About")
-
-local function selectTab(name)
-    for n, t in pairs(TabButtons) do
-        t.Page.Visible = (n == name)
-        t.Button.BackgroundColor3 = (n == name) and theme.Accent or theme.Bg
-        t.Button.TextColor3 = (n == name) and Color3.fromRGB(255,255,255) or theme.Text
+    local options = {"One", "Two", "Three", "Four"}
+    local expanded = false
+    local function setDropdownText(t)
+        dropdown.Text = t.." ▼"
     end
-    SessionState.LastTab = name; saveSession()
-end
-
---== صفحة Modules ==--
-local modulesUI = TabButtons.Modules.Page
-local searchBox = mk("TextBox",{
-    PlaceholderText="بحث عن وحدة...", Text="", ClearTextOnFocus=false,
-    Font=Enum.Font.Gotham, TextSize=14, TextColor3=theme.Text,
-    BackgroundColor3 = theme.Bg, Size = UDim2.new(1,0,0,32)
-},{}); corner(searchBox,6); stroke(searchBox,1); searchBox.Parent = modulesUI
-
-local list = mk("ScrollingFrame",{
-    BackgroundTransparency=1, Size=UDim2.new(1,0,1,-40), Position=UDim2.new(0,0,0,36),
-    CanvasSize=UDim2.new(), AutomaticCanvasSize=Enum.AutomaticSize.Y, ScrollBarThickness=6
-},{}); list.Parent = modulesUI
-
-local uilist = mk("UIListLayout",{Padding=UDim.new(0,8), SortOrder=Enum.SortOrder.LayoutOrder},{}); uilist.Parent = list
-padding(list,2)
-
-local RegisteredModules = {} -- { [id] = {module, running, frame, controls...} }
-
-local function getModulesFolder()
-    return ReplicatedStorage:FindFirstChild(MODULES_FOLDER_NAME)
-end
-
-local function makeModuleCard(info)
-    local card = mk("Frame",{
-        BackgroundColor3 = theme.Bg, Size=UDim2.new(1,-4,0,86)
-    },{})
-    corner(card,8); stroke(card,1); padding(card,10)
-
-    local nameL = mk("TextLabel",{
-        BackgroundTransparency=1, Text=info.Name or info.Id, TextXAlignment=Enum.TextXAlignment.Left,
-        Font=Enum.Font.GothamBold, TextSize=16, TextColor3=theme.Text, Size=UDim2.new(1,-150,0,20)
-    },{}); nameL.Parent = card
-
-    local descL = mk("TextLabel",{
-        BackgroundTransparency=1, TextWrapped=true, TextXAlignment=Enum.TextXAlignment.Left,
-        Font=Enum.Font.Gotham, TextSize=13, TextColor3=theme.Subtle, Size=UDim2.new(1,-150,1,-24),
-        Position=UDim2.new(0,0,0,24), Text=info.Description or "بدون وصف"
-    },{}); descL.Parent = card
-
-    local btnStart = mk("TextButton",{
-        BackgroundColor3=theme.Accent, Text="تشغيل", Font=Enum.Font.GothamBold, TextSize=14,
-        TextColor3=Color3.new(1,1,1), Size=UDim2.new(0,100,0,32), Position=UDim2.new(1,-110,0,6)
-    },{}); corner(btnStart,6); btnStart.Parent = card
-
-    local btnStop = mk("TextButton",{
-        BackgroundColor3=Color3.fromRGB(200,60,60), Text="إيقاف", Font=Enum.Font.GothamBold, TextSize=14,
-        TextColor3=Color3.new(1,1,1), Size=UDim2.new(0,100,0,32), Position=UDim2.new(1,-110,0,46)
-    },{}); corner(btnStop,6); btnStop.Parent = card
-
-    return {
-        Card = card, StartButton = btnStart, StopButton = btnStop,
-        SetRunning = function(running)
-            btnStart.BackgroundColor3 = running and Color3.fromRGB(90,90,90) or theme.Accent
-            btnStart.AutoButtonColor = not running
-        end
-    }
-end
-
-local function refreshModulesUI()
-    list:ClearAllChildren(); uilist.Parent = list
-    local query = string.lower(searchBox.Text or "")
-    for id, entry in pairs(RegisteredModules) do
-        local info = entry.Info
-        if query == "" or string.find(string.lower(info.Name.." "..(info.Description or "")), query, 1, true) then
-            entry.UI.Card.Parent = list
-        end
-    end
-end
-
-local function bindModuleButtons(entry)
-    local ui = entry.UI
-    ui.StartButton.MouseButton1Click:Connect(function()
-        if entry.Running then
-            Notifications.Show(gui, "<b>"..entry.Info.Name.."</b> تعمل بالفعل.", theme)
-            return
-        end
-        local ok, err = pcall(function() entry.Module.Start(LocalPlayer) end)
-        if ok then
-            entry.Running = true; ui.SetRunning(true)
-            SessionState.EnabledModules[entry.Info.Id] = true; saveSession()
-            Notifications.Show(gui, "تم تشغيل <b>"..entry.Info.Name.."</b>.", theme)
-        else
-            Notifications.Show(gui, "فشل تشغيل <b>"..entry.Info.Name.."</b>: "..tostring(err), theme)
-        end
+    dropdown.MouseButton1Click:Connect(function()
+        expanded = not expanded
+        local target = expanded and #options*36 or 0
+        TweenService:Create(ddList, TweenInfo.new(0.2), {Size = UDim2.new(0,220,0,target)}):Play()
     end)
-
-    ui.StopButton.MouseButton1Click:Connect(function()
-        if not entry.Running then
-            Notifications.Show(gui, "<b>"..entry.Info.Name.."</b> ليست قيد التشغيل.", theme)
-            return
-        end
-        local ok, err = pcall(function() if entry.Module.Stop then entry.Module.Stop(LocalPlayer) end end)
-        entry.Running = false; ui.SetRunning(false)
-        SessionState.EnabledModules[entry.Info.Id] = false; saveSession()
-        if ok then
-            Notifications.Show(gui, "تم إيقاف <b>"..entry.Info.Name.."</b>.", theme)
-        else
-            Notifications.Show(gui, "خطأ أثناء الإيقاف: "..tostring(err), theme)
-        end
-    end)
-end
-
-local function registerModule(mod)
-    local info = mod.Info or {}
-    assert(info.Id, "Module missing Info.Id")
-    info.Name = info.Name or info.Id
-    local ui = makeModuleCard(info)
-    RegisteredModules[info.Id] = {
-        Module = mod, Info = info, UI = ui, Running = false
-    }
-    bindModuleButtons(RegisteredModules[info.Id])
-    uilist.Parent = list
-    ui.Card.Parent = list
-end
-
-local function loadModules()
-    for _,v in ipairs(list:GetChildren()) do if v:IsA("Frame") then v:Destroy() end end
-    table.clear(RegisteredModules)
-    local folder = getModulesFolder()
-    if not folder then
-        Notifications.Show(gui, "لم يتم العثور على المجلد <b>"..MODULES_FOLDER_NAME.."</b> في ReplicatedStorage.", theme)
-        return
+    for _,opt in ipairs(options) do
+        local b = new("TextButton", {Parent = ddList, Text = opt, Size = UDim2.new(1,0,0,36), BackgroundTransparency = 0})
+        b.MouseButton1Click:Connect(function()
+            setDropdownText(opt)
+            expanded = false
+            TweenService:Create(ddList, TweenInfo.new(0.2), {Size = UDim2.new(0,220,0,0)}):Play()
+            showNotification("Selected: "..opt)
+        end)
     end
-    for _,m in ipairs(folder:GetChildren()) do
-        if m:IsA("ModuleScript") then
-            local ok, modOrErr = pcall(require, m)
-            if ok and type(modOrErr)=="table" and type(modOrErr.Start)=="function" then
-                registerModule(modOrErr)
-            else
-                Notifications.Show(gui, "تجاهل Module: "..m.Name.." (صيغة غير صحيحة).", theme)
+
+    -- Search box
+    local searchBox = new("TextBox", {Parent = pageTools, PlaceholderText = "Search tools...", Position = UDim2.new(0,260,0,44), Size = UDim2.new(0,320,0,36), ClearTextOnFocus = false})
+    new("UICorner", {Parent = searchBox, CornerRadius = UDim.new(0,6)})
+    local searchResults = new("ScrollingFrame", {Parent = pageTools, Position = UDim2.new(0,260,0,84), Size = UDim2.new(0,320,0,240), CanvasSize = UDim2.new(0,0,0,0)})
+    new("UIListLayout", {Parent = searchResults})
+    local sampleTools = {"Fly", "Speed", "ESP", "Teleport", "AutoFarm","Music Player","Cleaner"}
+    local function updateSearch(q)
+        for i,v in ipairs(searchResults:GetChildren()) do if v:IsA("TextButton") then v:Destroy() end end
+        local count = 0
+        for _,t in ipairs(sampleTools) do
+            if q == "" or string.find(string.lower(t), string.lower(q)) then
+                local b = new("TextButton", {Parent = searchResults, Text = t, Size = UDim2.new(1,0,0,36)})
+                count = count + 1
+                b.MouseButton1Click:Connect(function()
+                    showNotification("Activated tool: "..t)
+                end)
             end
         end
+        searchResults.CanvasSize = UDim2.new(0,0,0, 36*count)
     end
-    refreshModulesUI()
-    -- تفعيل الافتراضي أو ما حُفظ في الجلسة
-    for id, entry in pairs(RegisteredModules) do
-        local shouldEnable = SessionState.EnabledModules[id]
-            or (entry.Info.DefaultEnabled == true)
-        if shouldEnable then
-            local ok = pcall(function() entry.Module.Start(LocalPlayer) end)
-            entry.Running = ok and true or false
-            entry.UI.SetRunning(entry.Running)
-        end
-    end
+    searchBox:GetPropertyChangedSignal("Text"):Connect(function() updateSearch(searchBox.Text) end)
+    updateSearch("")
 end
 
-searchBox:GetPropertyChangedSignal("Text"):Connect(refreshModulesUI)
+-- Notifications (toast)
+function showNotification(text, duration)
+    duration = duration or 3
+    local n = new("Frame", {Parent = screenGui, Position = UDim2.new(1,-320,1,-120), Size = UDim2.new(0,300,0,48), BackgroundTransparency = 0})
+    new("UICorner", {Parent = n, CornerRadius = UDim.new(0,8)})
+    local t = new("TextLabel", {Parent = n, Text = text, Size = UDim2.new(1,-8,1,-8), Position = UDim2.new(0,8,0,4), BackgroundTransparency = 1, Font = Enum.Font.Gotham, TextSize = 14})
+    n.Position = UDim2.new(1,20,1,-120)
+    local tweenIn = TweenService:Create(n, TweenInfo.new(0.25), {Position = UDim2.new(1,-320,1,-120), BackgroundTransparency = 0})
+    local tweenOut = TweenService:Create(n, TweenInfo.new(0.25), {Position = UDim2.new(1,20,1,-120), BackgroundTransparency = 1})
+    tweenIn:Play()
+    delay(duration, function()
+        tweenOut:Play()
+        tweenOut.Completed:Wait()
+        n:Destroy()
+    end)
+end
 
---== صفحة Runner (مقاطع جاهزة فقط) ==--
-local runnerPage = TabButtons.Runner.Page
-local runnerHint = mk("TextLabel",{
-    BackgroundTransparency=1, TextWrapped=true, Font=Enum.Font.Gotham, TextSize=13,
-    TextColor3=theme.Subtle, Size=UDim2.new(1,0,0,32), TextXAlignment=Enum.TextXAlignment.Left,
-    Text = "تشغيل مقاطع (Snippets) موثوقة من ReplicatedStorage/"..SNIPPETS_FOLDER_NAME..""
-},{}); runnerHint.Parent = runnerPage
-
-local runBtn = mk("TextButton",{
-    BackgroundColor3=theme.Accent, Text="تشغيل المقطع المحدد", Font=Enum.Font.GothamBold, TextSize=14,
-    TextColor3=Color3.new(1,1,1), Size=UDim2.new(0,180,0,30), Position=UDim2.new(1,-190,0,0)
-},{}); corner(runBtn,6); runBtn.Parent = runnerPage
-
-local snippetList = mk("ScrollingFrame",{
-    BackgroundTransparency=1, Size=UDim2.new(1,0,1,-40), Position=UDim2.new(0,0,0,40),
-    CanvasSize=UDim2.new(), AutomaticCanvasSize=Enum.AutomaticSize.Y, ScrollBarThickness=6
-},{}); snippetList.Parent = runnerPage
-padding(snippetList,4)
-local sLayout = mk("UIListLayout",{Padding=UDim.new(0,6)},{}); sLayout.Parent = snippetList
-
-local selectedSnippet
-local function refreshSnippets()
-    snippetList:ClearAllChildren(); sLayout.Parent = snippetList
-    local folder = ReplicatedStorage:FindFirstChild(SNIPPETS_FOLDER_NAME)
-    if not folder then
-        mk("TextLabel",{BackgroundTransparency=1, Text="(لا يوجد مجلد Snippets)", Size=UDim2.new(1,0,0,24),
-            Font=Enum.Font.Gotham, TextSize=14, TextColor3=theme.Subtle},{}).Parent = snippetList
-        return
+-- Apply theme function
+function applyTheme()
+    local bg, text, translucent = nil, nil, nil
+    if settings.theme == "Dark" then
+        bg = Color3.fromRGB(20,20,22)
+        text = Color3.fromRGB(230,230,230)
+        translucent = 0.85
+    else
+        bg = Color3.fromRGB(245,245,245)
+        text = Color3.fromRGB(20,20,20)
+        translucent = 0.6
     end
-    for _,m in ipairs(folder:GetChildren()) do
-        if m:IsA("ModuleScript") then
-            local b = mk("TextButton",{
-                BackgroundColor3=theme.Bg, Text=m.Name, Font=Enum.Font.Gotham, TextSize=14,
-                TextColor3=theme.Text, Size=UDim2.new(1,-6,0,30)
-            },{}); corner(b,6); stroke(b,1); b.Parent = snippetList
-            b.MouseButton1Click:Connect(function()
-                selectedSnippet = m
-                Notifications.Show(gui, "تم اختيار: <b>"..m.Name.."</b>", theme)
+    window.BackgroundColor3 = bg
+    header.BackgroundColor3 = Color3.fromRGB(30,30,35)
+    headerTitle.TextColor3 = settings.theme == "Dark" and Color3.fromRGB(230,230,230) or Color3.fromRGB(20,20,20)
+    sidebar.BackgroundColor3 = Color3.fromRGB(40,40,44)
+    content.BackgroundColor3 = Color3.fromRGB(26,26,28)
+    for _,child in ipairs(window:GetDescendants()) do
+        if child:IsA("TextLabel") or child:IsA("TextButton") or child:IsA("TextBox") then
+            child.TextColor3 = text
+        end
+        if child:IsA("Frame") and child.Name ~= "Window" and child.Parent ~= screenGui then
+            -- lighten inner frames slightly for contrast
+            child.BackgroundTransparency = 0.8
+        end
+    end
+    -- Accent color applied to strokes
+    stroke.Color = settings.accent
+    headerTitle.TextColor3 = text
+end
+
+-- Apply scale
+function applyScale()
+    local targetSize = UDim2.fromOffset(820 * settings.scale, 480 * settings.scale)
+    local targetPos = UDim2.new(0.5, -410 * settings.scale, 0.5, -240 * settings.scale)
+    TweenService:Create(window, TweenInfo.new(0.18), {Size = targetSize, Position = targetPos}):Play()
+end
+
+-- Draggable header (smooth)
+do
+    local dragging = false
+    local dragStart = Vector2.new()
+    local startPos = nil
+
+    header.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = window.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
             end)
         end
-    end
-end
-
-runBtn.MouseButton1Click:Connect(function()
-    if not selectedSnippet then
-        Notifications.Show(gui, "اختر مقطعاً أولاً.", theme); return
-    end
-    local ok, sn = pcall(require, selectedSnippet)
-    if ok and type(sn)=="function" then
-        local ok2, err = pcall(function() sn(LocalPlayer) end)
-        if ok2 then
-            Notifications.Show(gui, "تم تنفيذ المقطع: <b>"..selectedSnippet.Name.."</b>", theme)
-        else
-            Notifications.Show(gui, "خطأ أثناء التنفيذ: "..tostring(err), theme)
+    end)
+    header.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement then
+            if dragging and startPos then
+                local delta = input.Position - dragStart
+                local newPos = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+                window.Position = newPos
+            end
         end
-    else
-        Notifications.Show(gui, "المقطع غير صالح (يجب أن يُرجع دالة).", theme)
-    end
-end)
-
---== صفحة Console ==--
-local consolePage = TabButtons.Console.Page
-local consoleBox = mk("TextLabel",{
-    BackgroundColor3=theme.Bg, TextXAlignment=Enum.TextXAlignment.Left, TextYAlignment=Enum.TextYAlignment.Top,
-    TextWrapped=true, Font=Enum.Font.Code, TextSize=14, TextColor3=theme.Text,
-    Size=UDim2.new(1,0,1,0)
-},{}); corner(consoleBox,8); stroke(consoleBox,1); padding(consoleBox,10); consoleBox.Parent = consolePage
-
-local function consoleLog(...)
-    local parts = {}
-    for i,v in ipairs({...}) do parts[i] = tostring(v) end
-    local line = table.concat(parts, " ")
-    consoleBox.Text = (consoleBox.Text == "" and line) or (consoleBox.Text.."\n"..line)
+    end)
 end
 
---== صفحة Settings ==--
-local settingsPage = TabButtons.Settings.Page
-
-local themeBtn = mk("TextButton",{
-    BackgroundColor3=theme.Bg, Text="تبديل الثيم (حالياً: "..SessionState.Theme..")",
-    Font=Enum.Font.Gotham, TextSize=14, TextColor3=theme.Text, Size=UDim2.new(1,0,0,34)
-},{}); corner(themeBtn,6); stroke(themeBtn,1); themeBtn.Parent = settingsPage
-
-local kbLabel = mk("TextLabel",{
-    BackgroundTransparency=1, Text="مفتاح الاختصار: RightCtrl لإظهار/إخفاء",
-    Font=Enum.Font.Gotham, TextSize=14, TextColor3=theme.Subtle, Size=UDim2.new(1,0,0,28),
-    Position=UDim2.new(0,0,0,40)
-},{}); kbLabel.Parent = settingsPage
-
-local reloadBtn = mk("TextButton",{
-    BackgroundColor3=theme.Accent, Text="إعادة تحميل الوحدات",
-    Font=Enum.Font.GothamBold, TextSize=14, TextColor3=Color3.new(1,1,1),
-    Size=UDim2.new(0,180,0,32), Position=UDim2.new(0,0,0,74)
-},{}); corner(reloadBtn,6); reloadBtn.Parent = settingsPage
-
-reloadBtn.MouseButton1Click:Connect(function()
-    loadModules()
-    Notifications.Show(gui, "تم إعادة تحميل الوحدات.", theme)
-end)
-
-themeBtn.MouseButton1Click:Connect(function()
-    SessionState.Theme = (SessionState.Theme=="Dark") and "Light" or "Dark"
-    saveSession()
-    Notifications.Show(gui, "ستتطبق الألوان بعد إعادة الفتح.", theme)
-end)
-
---== صفحة About ==--
-local about = TabButtons.About.Page
-mk("TextLabel",{
-    BackgroundTransparency=1, TextWrapped=true, Font=Enum.Font.Gotham, TextSize=14, TextColor3=theme.Text,
-    Size=UDim2.new(1,0,1,0), TextXAlignment=Enum.TextXAlignment.Left,
-    Text = "ScriptHub Pro — واجهة احترافية لإدارة وحدات موثوقة داخل لعبتك.\n• السحب/التصغير/التبديل بالاختصار\n• تشغيل/إيقاف وحدات\n• بحث، إشعارات، كونسول\n• ثيم داكن/فاتح\n\nنصيحة: أبقِ الوحدات داخل ReplicatedStorage/"..MODULES_FOLDER_NAME.." وتأكد أنها آمنة."
-},{}).Parent = about
-
---== منطق تبديل الرؤية/الثيم/الحجم ==--
+-- Minimize & close
 local minimized = false
 btnMin.MouseButton1Click:Connect(function()
     minimized = not minimized
-    content.Visible = not minimized
+    if minimized then
+        TweenService:Create(content, TweenInfo.new(0.18), {Size = UDim2.new(content.Size.X.Scale, content.Size.X.Offset, 0,0)}):Play()
+        TweenService:Create(window, TweenInfo.new(0.18), {Size = UDim2.new(window.Size.X.Scale, window.Size.X.Offset, 0,48)}):Play()
+    else
+        applyScale()
+        TweenService:Create(content, TweenInfo.new(0.18), {Size = UDim2.new(1, -160, 1, -48)}):Play()
+    end
+end)
+btnClose.MouseButton1Click:Connect(function()
+    screenGui:Destroy()
 end)
 
-btnTheme.MouseButton1Click:Connect(function()
-    themeBtn:Activate() -- استدعاء زر الإعدادات
-end)
-
-local function setVisible(v)
-    SessionState.Visible = v; saveSession()
-    gui.Enabled = v
-end
-
-btnClose.MouseButton1Click:Connect(function() setVisible(false) end)
-
--- مفتاح الاختصار RightCtrl
-UserInputService.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    if input.KeyCode == Enum.KeyCode.RightControl then
-        setVisible(not gui.Enabled)
+-- Keyboard toggle
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed then return end
+    if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == settings.bind then
+        settings.visible = not settings.visible
+        local target = settings.visible and 1 or 0
+        TweenService:Create(window, TweenInfo.new(0.18), {Position = settings.visible and window.Position or UDim2.new(window.Position.X.Scale, window.Position.X.Offset, 1.2, 0)}):Play()
+        window.Visible = true
+        if not settings.visible then
+            delay(0.2, function() window.Visible = false end)
+        end
     end
 end)
 
--- تغيير الحجم من الزاوية اليمنى السفلى (بسيط)
-local resizer = mk("Frame",{
-    BackgroundTransparency=1, Size=UDim2.new(0,14,0,14), AnchorPoint=Vector2.new(1,1),
-    Position=UDim2.new(1,0,1,0), Active=true
-},{}); resizer.Parent = root
-local draggingSize = false
-resizer.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then draggingSize=true end end)
-resizer.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then draggingSize=false end end)
-UserInputService.InputChanged:Connect(function(i)
-    if draggingSize and i.UserInputType==Enum.UserInputType.MouseMovement then
-        local m = UserInputService:GetMouseLocation()
-        local guiInset = game:GetService("GuiService"):GetGuiInset()
-        local x = math.max(420, m.X - root.AbsolutePosition.X)
-        local y = math.max(260, m.Y - root.AbsolutePosition.Y - guiInset.Y)
-        root.Size = UDim2.new(0,x,0,y)
-        SessionState.Size = root.Size; saveSession()
-    end
-end)
+-- Simple apply at start
+applyTheme()
+applyScale()
 
--- حفظ الموضع
-root:GetPropertyChangedSignal("Position"):Connect(function()
-    SessionState.Pos = root.Position; saveSession()
-end)
+-- Show startup notification
+showNotification("Pro GUI loaded. Press RightShift to toggle.")
 
--- اختيار التبويب الأول
-selectTab(SessionState.LastTab or "Modules")
+-- Example: expose a public API for other local scripts (optional)
+local API = {}
+function API.Show(msg) showNotification(msg) end
+screenGui:SetAttribute("ProGUI_API", true)
+screenGui:GetAttributeChangedSignal("ProGUI_API"):Connect(function() end) -- dummy
 
--- تحميل الوحدات والمقاطع
-loadModules(); refreshSnippets()
-
--- مثال تسجيل في الكونسول
-consoleLog("[ScriptHub] جاهز. عدد الوحدات: "..tostring(#RegisteredModules))
+-- End of script
