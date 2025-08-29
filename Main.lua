@@ -307,7 +307,7 @@ end
 -- Apply scale
 function applyScale()
     local targetSize = UDim2.fromOffset(820 * settings.scale, 480 * settings.scale)
-    local targetPos = UDim2.new(0.5, -410 * settings.scale, 0.5, -240 * settings.scale)
+    local targetPos = UDim2.new(0.5, 0, 0.5, 0)
     TweenService:Create(window, TweenInfo.new(0.18), {Size = targetSize, Position = targetPos}):Play()
 end
 
